@@ -2,10 +2,7 @@ import json
 from nltk import word_tokenize, bigrams, trigrams
 from nltk.util import pad_sequence
 from nltk.util import ngrams
-from nltk.lm import MLE
 from nltk.lm.models import Laplace
-
-import re
 
 BOS = '<BOS>'
 EOS = '<EOS>'
@@ -13,9 +10,6 @@ EOS = '<EOS>'
 proverbs_fn = "./data/proverbes.txt"
 test1_fn = "./data/test_proverbes1.txt"
 
-text = ["le cours ift 7022 est offert à distance cette année .",
-        "ce cours n est habituellement pas à distance .",
-        "le cours est habituellement donnée à l automne ."]
 
 def load_proverbs(filename):
     with open(filename, 'r', encoding='utf-8') as f:
@@ -24,9 +18,10 @@ def load_proverbs(filename):
 
 
 def load_tests(filename):
-    with open(filename, 'r') as fp:
+    with open(filename, 'r', encoding='utf-8') as fp:
         test_data = json.load(fp)
     return test_data
+
 
 def build_vocabulary(text_list):
     all_unigrams = list()
@@ -35,132 +30,129 @@ def build_vocabulary(text_list):
         all_unigrams = all_unigrams + word_list
     voc = set(all_unigrams)
     voc.add(BOS)
+    voc.add(EOS)
     return list(voc)
 
-def get_ngrams(text_list, n): #HEIIIIIIIIIIIIIIIIIN
+
+def get_ngrams(text_list, n):
     all_ngrams = list()
     for sentence in text_list:
         tokens = word_tokenize(sentence.lower())
-        padded_sent = list(pad_sequence(tokens, pad_left=True, left_pad_symbol=BOS, pad_right=True, right_pad_symbol=EOS, n=n))
+        padded_sent = list(
+            pad_sequence(tokens, pad_left=True, left_pad_symbol=BOS, pad_right=True, right_pad_symbol=EOS, n=n))
         all_ngrams = all_ngrams + list(ngrams(padded_sent, n=n))
+
     return all_ngrams
 
+
 def train_models(filename):
-    #proverbs = load_proverbs(filename)
     global modelA, modelB, modelC
 
-    vocabulary = build_vocabulary(text)
+    proverbs = load_proverbs(filename)
+
+    vocabulary = build_vocabulary(proverbs)
 
     order = 1
     modelA = Laplace(order)
-    modelA.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
+    modelA.fit([get_ngrams(proverbs, n=order)], vocabulary_text=vocabulary)
 
     order = 2
     modelB = Laplace(order)
-    modelB.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
+    modelB.fit([get_ngrams(proverbs, n=order)], vocabulary_text=vocabulary)
 
     order = 3
     modelC = Laplace(order)
-    modelC.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
+    modelC.fit([get_ngrams(proverbs, n=order)], vocabulary_text=vocabulary)
 
-    """
-    print(len(model.vocab))
-    print(model.score("ift", ["cours"]))
-    print(model.logscore("ift", ["cours"]))
-    test_sequence = [("le", "cours"), ("cours", "ift")]
-    print(model.perplexity(test_sequence))
-    print(model.generate(text_seed=['cours']))
-    """
 
 def highest_score(model, previous_word, choices):
-    score = 0
+    score = None
     guess = None
 
     for choice in choices:
-        if model.score(choice, previous_word) > score:
+        print(choice)
+        print(previous_word)
+        if score is None or model.logscore(choice, [previous_word]) > score:
             guess = choice
-            score = model.score(choice, previous_word)
+            score = model.logscore(choice, [previous_word])
 
+    print(score)
     return guess
 
-def cloze_test(incomplete_proverb, choices, n):
 
+def cloze_test(incomplete_proverb, choices, n):
     incomplete_corpus = word_tokenize(incomplete_proverb)
     first_x = incomplete_corpus.index('*')
 
+    if first_x - 1 >= 0:
+        previous_words = incomplete_corpus[first_x - 1]
+    else:
+        previous_words = BOS
+
+    if first_x + 3 < len(incomplete_corpus):
+        word_after = incomplete_corpus[first_x + 3]
+    else:
+        word_after = EOS
+
+    if n == 2:
+        result_return = highest_score(modelB, previous_words, choices)
+        if result_return is not None:
+            sequence = [tuple([previous_words, result_return]), tuple([result_return, word_after])]
+            perplexity_return = modelB.perplexity(sequence)
+        else:
+            return 0, 0
+    else:
+        return 0, 0
+
+    """
     previous_words = []
     for x in range(1, n):
         previous_words.insert(0, incomplete_corpus[first_x - x])
-    previous_word_further = incomplete_corpus[first_x - n]
 
-    print(previous_words)
-    print(previous_word_further)
-
+    word_after = []
+    for x in range(first_x + 3, first_x + 3 + n - 1):
+        if x >= len(incomplete_corpus):
+            word_after.append('<EOS>')
+        else:
+            word_after.append(incomplete_corpus[x])
+    
     if n == 1:
-        result_return = highest_score(modelA, previous_words, choices)
+        result_return = highest_score(modelA, [''], choices)
         if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelA.perplexity([listA, listB])
+            sequence = result_return
+            perplexity_return = modelA.perplexity(sequence)
         else:
             return 0, 0
     elif n == 2:
-        result_return = highest_score(modelB, previous_words, choices)
+        result_return = highest_score(modelB, [incomplete_corpus[first_x - 1]], choices)
         if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelB.perplexity([listA, listB])
+            sequence = [tuple([previous_words.copy().pop(), result_return]), tuple([result_return, word_after.copy().pop()])]
+            perplexity_return = modelB.perplexity(sequence)
         else:
             return 0, 0
     elif n == 3:
-        result_return = highest_score(modelC, previous_words, choices)
+        result_return = highest_score(modelC, [incomplete_corpus[first_x - 1]], choices)
         if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelC.perplexity([listA, listB])
+            sequence = [tuple([previous_words.copy().pop(0), previous_words.copy().pop(1), result_return]), tuple([result_return, word_after.copy().pop(0), word_after.copy().pop(1)])]
+            perplexity_return = modelC.perplexity(sequence)
         else:
             return 0, 0
-            
+    """
+    print(sequence)
     return result_return, perplexity_return
 
+
 if __name__ == '__main__':
-    partial_proverb = "le cours ift 7022 est *** à distance cette année ."
-    options = ['est', 'offert', 'cours', 'distance']
 
-    print(partial_proverb)
-    train_models(proverbs_fn)
+    ORDER = 2
 
-    solution, perplexity = cloze_test(partial_proverb, options, n=1)
-    print("\n\t1 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-    print("\tSolution = {} , Perplexité = {}\n".format(solution, perplexity))
-
-    solution, perplexity = cloze_test(partial_proverb, options, n=2)
-    print("\n\t2 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-    print("\tSolution = {} , Perplexité = {}\n".format(solution, perplexity))
-
-    solution, perplexity = cloze_test(partial_proverb, options, n=3)
-    print("\n\t3 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-    print("\tSolution = {} , Perplexité = {}".format(solution, perplexity))
-
-"""
-if __name__ == '__main__':
-    # Vous pouvez modifier cette section comme bon vous semble
-    
-    proverbs = load_proverbs(proverbs_fn)
-    print("\nNombre de proverbes : ", len(proverbs))
     train_models(proverbs_fn)
 
     test_proverbs = load_tests(test1_fn)
     print("\nNombre de tests du fichier {}: {}\n".format(test1_fn, len(test_proverbs)))
     print("Les résultats des tests sont:")
+
     for partial_proverb, options in test_proverbs.items():
-        solution, perplexity = cloze_test(partial_proverb, options, n=20)
-        print("\n\tProverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-        print("\tSolution = {} , Perplexité = {}".format(solution, perplexity))
-    """
+        solution, perplexity = cloze_test(partial_proverb, options, n=ORDER)
+        print("\n\t1 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
+        print("\tSolution = {} , Perplexité = {}\n".format(solution, perplexity))
