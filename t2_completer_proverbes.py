@@ -15,6 +15,7 @@ corpus = ["le cours ift 7022 est offert à distance cette année .",
 BOS = '<BOS>'
 EOS = '<EOS>'
 
+model = dict()
 
 def build_vocabulary(text_list):
     all_unigrams = list()
@@ -50,47 +51,61 @@ def load_tests(filename):
 
 def train_models(filename):
     # proverbs = load_proverbs(filename)
+
     proverbs = corpus
+    vocabulary = build_vocabulary(proverbs)
 
     global model
-    order = 2
 
-    vocabulary = build_vocabulary(proverbs)
-    corpus_ngrams = get_ngrams(proverbs, n=order)
-
-    model = Laplace(order)
-    model.fit([corpus_ngrams], vocabulary_text=vocabulary)
+    for order in range(1, 4):
+        corpus_ngrams = get_ngrams(proverbs, n=order)
+        newModel = Laplace(order)
+        newModel.fit([corpus_ngrams], vocabulary_text=vocabulary)
+        model[order] = newModel
 
 
 def cloze_test(incomplete_proverb, choices, n=3):
-    # Find previous_word and word_after by going through incomplete_proverb
-    incomplete_corpus = word_tokenize(incomplete_proverb)
+    incomplete_corpus = word_tokenize(incomplete_proverb.lower())
     first_x = incomplete_corpus.index('*')
 
-    if first_x - 1 >= 0:
-        previous_word = incomplete_corpus[first_x - 1]
-    else:
-        previous_word = BOS
+    previous_words = []
+    words_after = []
 
-    if first_x + 3 < len(incomplete_corpus):
-        word_after = incomplete_corpus[first_x + 3]
-    else:
-        word_after = EOS
+    for i in range(1, n):
+        if first_x - i >= 0:
+            previous_words.insert(0, incomplete_corpus[first_x - i])
+        else:
+            previous_words.insert(0, BOS)
+        if first_x + 2 + i < len(incomplete_corpus):
+            words_after.append(incomplete_corpus[first_x + 2 + i])
+        else:
+            words_after.append(EOS)
 
     score = None
     result = None
 
-    if n == 2:
-        for choice in choices:
-            print(choice, [previous_word])
-            newScore = model.logscore(choice, [previous_word])
-            if result is None or newScore > score:
-                result = choice
-                score = newScore
+    for choice in choices:
+        if n == 1:
+          context = tuple()
+        elif n == 2:
+            context = tuple(previous_words)
+        elif n == 3:
+            context = tuple([previous_words[0], previous_words[1]])
+        print(choice, context)
+        newScore = model[n].logscore(choice, context)
+        if result is None or newScore > score:
+            result = choice
+            score = newScore
 
-    test_sequence = [(previous_word, result), (result, word_after)]
+    if n == 1:
+        test_sequence = result
+    elif n == 2:
+        test_sequence = [(previous_words[0], result), (result, words_after[0])]
+    elif n == 3:
+        test_sequence = [(previous_words[0], previous_words[1], result), (result, words_after[0], words_after[1],)]
+
     print(test_sequence)
-    perplexity_result = model.perplexity(test_sequence)
+    perplexity_result = model[n].perplexity(test_sequence)
 
     print(score)
 
@@ -100,10 +115,10 @@ def cloze_test(incomplete_proverb, choices, n=3):
 if __name__ == '__main__':
     train_models(proverbs_fn)
 
-    partial_proverb = "Le cours IFT-7022 est *** à distance cette année."
-    options = ['on', 'qui', 'offert', 'rien']
+    partial_proverb = "Le cours IFT-7022 est offert à *** cette année."
+    options = ['on', 'distance', 'offert', 'rien']
 
-    solution, perplexity = cloze_test(partial_proverb, options, n=2)
+    solution, perplexity = cloze_test(partial_proverb, options, n=1)
     print("\tSolution = {} , Perplexité = {}".format(solution, perplexity))
 
 if __name__ == '__main__':
