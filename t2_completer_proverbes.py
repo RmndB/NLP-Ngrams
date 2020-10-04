@@ -4,13 +4,11 @@ from nltk.util import pad_sequence
 from nltk import word_tokenize
 from nltk.util import ngrams
 from nltk.lm.models import Laplace
+from collections import defaultdict
+import math
 
 proverbs_fn = "./data/proverbes.txt"
 test1_fn = "./data/test_proverbes1.txt"
-
-corpus = ["le cours ift 7022 est offert à distance cette année .",
-          "ce cours n est habituellement pas à distance .",
-          "le cours est habituellement donnée à l automne ."]
 
 BOS = '<BOS>'
 EOS = '<EOS>'
@@ -52,8 +50,26 @@ def load_tests(filename):
     return test_data
 
 
+# TODO: Edit/Refactor this function
+def create_custom_bigram(proverbs):
+    global model
+
+    model = defaultdict(lambda: defaultdict(lambda: 0))
+
+    corpus_ngrams = get_ngrams(proverbs, n=2)
+
+    for w1, w2 in corpus_ngrams:
+        model[w1][w2] += 1
+
+    for w1 in model:
+        total_count = float(sum(model[w1].values()))
+        for w2 in model[w1]:
+            model[w1][w2] /= total_count
+
+    return model
+
+
 def train_models(filename):
-    # proverbs = corpus
     proverbs = load_proverbs(filename)
 
     vocabulary = build_vocabulary(proverbs)
@@ -65,7 +81,7 @@ def train_models(filename):
         model = Laplace(order)
         model.fit([corpus_ngrams], vocabulary_text=vocabulary)
     elif order == 20:
-        print("TODO")
+        model = create_custom_bigram(proverbs)
     else:
         raise Exception("Value must be either 1, 2, 3 or 20.")
 
@@ -77,17 +93,27 @@ def find_with_score(choices, previous_words, n):
     for choice in choices:
         if n == 1:
             context = tuple()
+            newScore = model.logscore(choice, context)
         elif n == 2:
             context = tuple(previous_words)
+            newScore = model.logscore(choice, context)
         elif n == 3:
             context = tuple([previous_words[0], previous_words[1]])
+            newScore = model.logscore(choice, context)
+        elif n == 20:
+            newScore = dict(model[previous_words[0]]).get(choice)
+            if newScore is not None:
+                newScore = math.log(dict(model[previous_words[0]]).get(choice))
+            else:
+                # TODO: Better way to handle unseen values
+                newScore = -99999999
 
-        newScore = model.logscore(choice, context)
         if result is None or newScore > score:
             result = choice
             score = newScore
 
-    print(score)
+    # TODO: Remove this line once post-debugging
+    # print(score)
 
     return result
 
@@ -103,6 +129,8 @@ def find_with_perplexity(choices, previous_words, words_after, n):
             test_sequence = [(previous_words[0], choice), (choice, words_after[0])]
         elif n == 3:
             test_sequence = [(previous_words[0], previous_words[1], choice), (choice, words_after[0], words_after[1],)]
+        elif n == 20:
+            raise Exception("TODO")
 
         newPerplexity = model.perplexity(test_sequence)
 
@@ -120,13 +148,23 @@ def cloze_test(incomplete_proverb, choices, n=3):
     previous_words = []
     words_after = []
 
-    for i in range(1, n):
-        if first_x - i >= 0:
-            previous_words.insert(0, incomplete_corpus[first_x - i])
+    if order == 1 or order == 2 or order == 3:
+        for i in range(1, n):
+            if first_x - i >= 0:
+                previous_words.insert(0, incomplete_corpus[first_x - i])
+            else:
+                previous_words.insert(0, BOS)
+            if first_x + 2 + i < len(incomplete_corpus):
+                words_after.append(incomplete_corpus[first_x + 2 + i])
+            else:
+                words_after.append(EOS)
+    else:
+        if first_x - 1 >= 0:
+            previous_words.insert(0, incomplete_corpus[first_x - 1])
         else:
             previous_words.insert(0, BOS)
-        if first_x + 2 + i < len(incomplete_corpus):
-            words_after.append(incomplete_corpus[first_x + 2 + i])
+        if first_x + 3 < len(incomplete_corpus):
+            words_after.append(incomplete_corpus[first_x + 3])
         else:
             words_after.append(EOS)
 
@@ -137,31 +175,23 @@ def cloze_test(incomplete_proverb, choices, n=3):
 
     if n == 1:
         test_sequence = result
+        perplexity = model.perplexity(test_sequence)
     elif n == 2:
         test_sequence = [(previous_words[0], result), (result, words_after[0])]
+        perplexity = model.perplexity(test_sequence)
     elif n == 3:
         test_sequence = [(previous_words[0], previous_words[1], result), (result, words_after[0], words_after[1],)]
-
-    perplexity = model.perplexity(test_sequence)
+        perplexity = model.perplexity(test_sequence)
+    elif n == 20:
+        perplexity = 0
 
     return result, perplexity
 
 
-"""
-if __name__ == '__main__':
-    train_models(proverbs_fn)
-
-    partial_proverb = "Le cours IFT-7022 est offert à *** cette année."
-    options = ['on', 'distance', 'offert', 'rien']
-
-    solution, perplexity_result = cloze_test(partial_proverb, options, n=2)
-    print("\tSolution = {} , Perplexité = {}".format(solution, perplexity_result))
-"""
-
 if __name__ == '__main__':
 
     order = 20
-    mode = 1
+    mode = 0
 
     print("\nNombre de proverbes : ", len(load_proverbs(proverbs_fn)))
     train_models(proverbs_fn)
