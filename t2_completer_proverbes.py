@@ -1,32 +1,20 @@
 import json
-from nltk import word_tokenize, bigrams, trigrams
+
 from nltk.util import pad_sequence
+from nltk import word_tokenize
 from nltk.util import ngrams
-from nltk.lm import MLE
 from nltk.lm.models import Laplace
-
-import re
-
-BOS = '<BOS>'
-EOS = '<EOS>'
 
 proverbs_fn = "./data/proverbes.txt"
 test1_fn = "./data/test_proverbes1.txt"
 
-text = ["le cours ift 7022 est offert à distance cette année .",
-        "ce cours n est habituellement pas à distance .",
-        "le cours est habituellement donnée à l automne ."]
+corpus = ["le cours ift 7022 est offert à distance cette année .",
+          "ce cours n est habituellement pas à distance .",
+          "le cours est habituellement donnée à l automne ."]
 
-def load_proverbs(filename):
-    with open(filename, 'r', encoding='utf-8') as f:
-        raw_lines = f.readlines()
-    return [x.strip() for x in raw_lines]
+BOS = '<BOS>'
+EOS = '<EOS>'
 
-
-def load_tests(filename):
-    with open(filename, 'r') as fp:
-        test_data = json.load(fp)
-    return test_data
 
 def build_vocabulary(text_list):
     all_unigrams = list()
@@ -37,121 +25,90 @@ def build_vocabulary(text_list):
     voc.add(BOS)
     return list(voc)
 
-def get_ngrams(text_list, n): #HEIIIIIIIIIIIIIIIIIN
+
+def get_ngrams(text_list, n=2):
     all_ngrams = list()
     for sentence in text_list:
         tokens = word_tokenize(sentence.lower())
-        padded_sent = list(pad_sequence(tokens, pad_left=True, left_pad_symbol=BOS, pad_right=True, right_pad_symbol=EOS, n=n))
+        padded_sent = list(
+            pad_sequence(tokens, pad_left=True, left_pad_symbol=BOS, pad_right=True, right_pad_symbol=EOS, n=n))
         all_ngrams = all_ngrams + list(ngrams(padded_sent, n=n))
     return all_ngrams
 
+
+def load_proverbs(filename):
+    with open(filename, 'r', encoding='utf-8') as f:
+        raw_lines = f.readlines()
+    return [x.strip() for x in raw_lines]
+
+
+def load_tests(filename):
+    with open(filename, 'r', encoding='utf-8') as fp:
+        test_data = json.load(fp)
+    return test_data
+
+
 def train_models(filename):
-    #proverbs = load_proverbs(filename)
-    global modelA, modelB, modelC
+    # proverbs = load_proverbs(filename)
+    proverbs = corpus
 
-    vocabulary = build_vocabulary(text)
-
-    order = 1
-    modelA = Laplace(order)
-    modelA.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
-
+    global model
     order = 2
-    modelB = Laplace(order)
-    modelB.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
 
-    order = 3
-    modelC = Laplace(order)
-    modelC.fit([get_ngrams(text, n=order)], vocabulary_text=vocabulary)
+    vocabulary = build_vocabulary(proverbs)
+    corpus_ngrams = get_ngrams(proverbs, n=order)
 
-    """
-    print(len(model.vocab))
-    print(model.score("ift", ["cours"]))
-    print(model.logscore("ift", ["cours"]))
-    test_sequence = [("le", "cours"), ("cours", "ift")]
-    print(model.perplexity(test_sequence))
-    print(model.generate(text_seed=['cours']))
-    """
+    model = Laplace(order)
+    model.fit([corpus_ngrams], vocabulary_text=vocabulary)
 
-def highest_score(model, previous_word, choices):
-    score = 0
-    guess = None
 
-    for choice in choices:
-        if model.score(choice, previous_word) > score:
-            guess = choice
-            score = model.score(choice, previous_word)
-
-    return guess
-
-def cloze_test(incomplete_proverb, choices, n):
-
+def cloze_test(incomplete_proverb, choices, n=3):
+    # Find previous_word and word_after by going through incomplete_proverb
     incomplete_corpus = word_tokenize(incomplete_proverb)
     first_x = incomplete_corpus.index('*')
 
-    previous_words = []
-    for x in range(1, n):
-        previous_words.insert(0, incomplete_corpus[first_x - x])
-    previous_word_further = incomplete_corpus[first_x - n]
+    if first_x - 1 >= 0:
+        previous_word = incomplete_corpus[first_x - 1]
+    else:
+        previous_word = BOS
 
-    print(previous_words)
-    print(previous_word_further)
+    if first_x + 3 < len(incomplete_corpus):
+        word_after = incomplete_corpus[first_x + 3]
+    else:
+        word_after = EOS
 
-    if n == 1:
-        result_return = highest_score(modelA, previous_words, choices)
-        if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelA.perplexity([listA, listB])
-        else:
-            return 0, 0
-    elif n == 2:
-        result_return = highest_score(modelB, previous_words, choices)
-        if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelB.perplexity([listA, listB])
-        else:
-            return 0, 0
-    elif n == 3:
-        result_return = highest_score(modelC, previous_words, choices)
-        if result_return is not None:
-            listA = previous_words.copy()
-            listA.insert(0, previous_word_further)
-            listB = previous_words.copy()
-            listB.append(result_return)
-            perplexity_return = modelC.perplexity([listA, listB])
-        else:
-            return 0, 0
-            
-    return result_return, perplexity_return
+    score = None
+    result = None
+
+    if n == 2:
+        for choice in choices:
+            print(choice, [previous_word])
+            newScore = model.logscore(choice, [previous_word])
+            if result is None or newScore > score:
+                result = choice
+                score = newScore
+
+    test_sequence = [(previous_word, result), (result, word_after)]
+    print(test_sequence)
+    perplexity_result = model.perplexity(test_sequence)
+
+    print(score)
+
+    return result, perplexity_result
+
 
 if __name__ == '__main__':
-    partial_proverb = "le cours ift 7022 est *** à distance cette année ."
-    options = ['est', 'offert', 'cours', 'distance']
-
-    print(partial_proverb)
     train_models(proverbs_fn)
 
-    solution, perplexity = cloze_test(partial_proverb, options, n=1)
-    print("\n\t1 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-    print("\tSolution = {} , Perplexité = {}\n".format(solution, perplexity))
+    partial_proverb = "Le cours IFT-7022 est *** à distance cette année."
+    options = ['on', 'qui', 'offert', 'rien']
 
     solution, perplexity = cloze_test(partial_proverb, options, n=2)
-    print("\n\t2 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-    print("\tSolution = {} , Perplexité = {}\n".format(solution, perplexity))
-
-    solution, perplexity = cloze_test(partial_proverb, options, n=3)
-    print("\n\t3 Proverbe incomplet: {} , Options: {}".format(partial_proverb, options))
     print("\tSolution = {} , Perplexité = {}".format(solution, perplexity))
 
-"""
 if __name__ == '__main__':
+    """
     # Vous pouvez modifier cette section comme bon vous semble
-    
     proverbs = load_proverbs(proverbs_fn)
     print("\nNombre de proverbes : ", len(proverbs))
     train_models(proverbs_fn)
