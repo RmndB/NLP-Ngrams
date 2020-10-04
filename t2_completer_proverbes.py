@@ -15,8 +15,9 @@ corpus = ["le cours ift 7022 est offert à distance cette année .",
 BOS = '<BOS>'
 EOS = '<EOS>'
 
-model = dict()
-mode = 0
+model = None
+mode = None
+order = None
 
 
 def build_vocabulary(text_list):
@@ -52,18 +53,16 @@ def load_tests(filename):
 
 
 def train_models(filename):
-    # proverbs = load_proverbs(filename)
+    # proverbs = corpus
+    proverbs = load_proverbs(filename)
 
-    proverbs = corpus
     vocabulary = build_vocabulary(proverbs)
 
     global model
 
-    for order in range(1, 4):
-        corpus_ngrams = get_ngrams(proverbs, n=order)
-        newModel = Laplace(order)
-        newModel.fit([corpus_ngrams], vocabulary_text=vocabulary)
-        model[order] = newModel
+    corpus_ngrams = get_ngrams(proverbs, n=order)
+    model = Laplace(order)
+    model.fit([corpus_ngrams], vocabulary_text=vocabulary)
 
 
 def find_with_score(choices, previous_words, n):
@@ -78,10 +77,12 @@ def find_with_score(choices, previous_words, n):
         elif n == 3:
             context = tuple([previous_words[0], previous_words[1]])
 
-        newScore = model[n].logscore(choice, context)
+        newScore = model.logscore(choice, context)
         if result is None or newScore > score:
             result = choice
             score = newScore
+
+    print(score)
 
     return result
 
@@ -98,7 +99,7 @@ def find_with_perplexity(choices, previous_words, words_after, n):
         elif n == 3:
             test_sequence = [(previous_words[0], previous_words[1], choice), (choice, words_after[0], words_after[1],)]
 
-        newPerplexity = model[n].perplexity(test_sequence)
+        newPerplexity = model.perplexity(test_sequence)
 
         if result is None or newPerplexity < perplexity:
             result = choice
@@ -124,8 +125,10 @@ def cloze_test(incomplete_proverb, choices, n=3):
         else:
             words_after.append(EOS)
 
-    # result = find_with_score(choices, previous_words, n)
-    result = find_with_perplexity(choices, previous_words, words_after, n)
+    if mode == 0:
+        result = find_with_score(choices, previous_words, n)
+    elif mode == 1:
+        result = find_with_perplexity(choices, previous_words, words_after, n)
 
     if n == 1:
         test_sequence = result
@@ -134,11 +137,12 @@ def cloze_test(incomplete_proverb, choices, n=3):
     elif n == 3:
         test_sequence = [(previous_words[0], previous_words[1], result), (result, words_after[0], words_after[1],)]
 
-    perplexity = model[n].perplexity(test_sequence)
+    perplexity = model.perplexity(test_sequence)
 
     return result, perplexity
 
 
+"""
 if __name__ == '__main__':
     train_models(proverbs_fn)
 
@@ -147,19 +151,20 @@ if __name__ == '__main__':
 
     solution, perplexity_result = cloze_test(partial_proverb, options, n=2)
     print("\tSolution = {} , Perplexité = {}".format(solution, perplexity_result))
+"""
 
 if __name__ == '__main__':
-    """
-    # Vous pouvez modifier cette section comme bon vous semble
-    proverbs = load_proverbs(proverbs_fn)
-    print("\nNombre de proverbes : ", len(proverbs))
+
+    order = 3
+    mode = 1
+
+    print("\nNombre de proverbes : ", len(load_proverbs(proverbs_fn)))
     train_models(proverbs_fn)
 
     test_proverbs = load_tests(test1_fn)
     print("\nNombre de tests du fichier {}: {}\n".format(test1_fn, len(test_proverbs)))
     print("Les résultats des tests sont:")
     for partial_proverb, options in test_proverbs.items():
-        solution, perplexity = cloze_test(partial_proverb, options, n=20)
+        solution, perplexity_result = cloze_test(partial_proverb, options, n=order)
         print("\n\tProverbe incomplet: {} , Options: {}".format(partial_proverb, options))
-        print("\tSolution = {} , Perplexité = {}".format(solution, perplexity))
-    """
+        print("\tSolution = {} , Perplexité = {}".format(solution, perplexity_result))
