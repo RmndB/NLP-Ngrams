@@ -60,9 +60,14 @@ def train_models(filename):
 
     global model
 
-    corpus_ngrams = get_ngrams(proverbs, n=order)
-    model = Laplace(order)
-    model.fit([corpus_ngrams], vocabulary_text=vocabulary)
+    if order == 1 or order == 2 or order == 3:
+        corpus_ngrams = get_ngrams(proverbs, n=order)
+        model = Laplace(order)
+        model.fit([corpus_ngrams], vocabulary_text=vocabulary)
+    elif order == 20:
+        print("TODO")
+    else:
+        raise Exception("Value must be either 1, 2, 3 or 20.")
 
 
 def find_with_score(choices, previous_words, n):
@@ -155,7 +160,7 @@ if __name__ == '__main__':
 
 if __name__ == '__main__':
 
-    order = 3
+    order = 20
     mode = 1
 
     print("\nNombre de proverbes : ", len(load_proverbs(proverbs_fn)))
