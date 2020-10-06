@@ -13,10 +13,11 @@ test1_fn = "./data/test_proverbes1.txt"
 BOS = '<BOS>'
 EOS = '<EOS>'
 
-model = None
+model = defaultdict(lambda: defaultdict(lambda: 0))
 mode = None
 order = None
-
+counter = defaultdict(lambda: 0)
+total = 0
 
 def build_vocabulary(text_list):
     all_unigrams = list()
@@ -52,14 +53,19 @@ def load_tests(filename):
 
 # TODO: Edit/Refactor this function
 def create_custom_bigram(proverbs):
-    global model
-
-    model = defaultdict(lambda: defaultdict(lambda: 0))
+    global model, counter, total
 
     corpus_ngrams = get_ngrams(proverbs, n=2)
+    corpus_unigram = get_ngrams(proverbs, n=1)
 
     for w1, w2 in corpus_ngrams:
         model[w1][w2] += 1
+
+    for w in corpus_unigram:
+        counter[w[0]] += 1
+        total += 1
+    counter[EOS] = len(load_proverbs(proverbs_fn))
+    counter[BOS] = counter[EOS]
 
     for w1 in model:
         total_count = float(sum(model[w1].values()))
@@ -113,9 +119,9 @@ def find_with_score(choices, previous_words, n):
             score = newScore
 
     # TODO: Remove this line once post-debugging
-    # print(score)
+    print(score)
 
-    return result
+    return result, score
 
 
 def find_with_perplexity(choices, previous_words, words_after, n):
@@ -125,14 +131,15 @@ def find_with_perplexity(choices, previous_words, words_after, n):
     for choice in choices:
         if n == 1:
             test_sequence = choice
+            newPerplexity = model.perplexity(test_sequence)
         elif n == 2:
             test_sequence = [(previous_words[0], choice), (choice, words_after[0])]
+            newPerplexity = model.perplexity(test_sequence)
         elif n == 3:
             test_sequence = [(previous_words[0], previous_words[1], choice), (choice, words_after[0], words_after[1],)]
+            newPerplexity = model.perplexity(test_sequence)
         elif n == 20:
             raise Exception("TODO")
-
-        newPerplexity = model.perplexity(test_sequence)
 
         if result is None or newPerplexity < perplexity:
             result = choice
@@ -142,6 +149,8 @@ def find_with_perplexity(choices, previous_words, words_after, n):
 
 
 def cloze_test(incomplete_proverb, choices, n=3):
+    global model, counter
+
     incomplete_corpus = word_tokenize(incomplete_proverb.lower())
     first_x = incomplete_corpus.index('*')
 
@@ -169,7 +178,7 @@ def cloze_test(incomplete_proverb, choices, n=3):
             words_after.append(EOS)
 
     if mode == 0:
-        result = find_with_score(choices, previous_words, n)
+        result, score = find_with_score(choices, previous_words, n)
     elif mode == 1:
         result = find_with_perplexity(choices, previous_words, words_after, n)
 
@@ -183,7 +192,8 @@ def cloze_test(incomplete_proverb, choices, n=3):
         test_sequence = [(previous_words[0], previous_words[1], result), (result, words_after[0], words_after[1],)]
         perplexity = model.perplexity(test_sequence)
     elif n == 20:
-        perplexity = 0
+        # print(total, previous_words[0], counter[tuple(previous_words[0])], result, counter[result], words_after[0], counter[words_after[0]])
+        perplexity = 2**(-(1/3)*(math.log2(counter[previous_words[0]]/total)+math.log2(counter[result]/total)+math.log2(counter[words_after[0]]/total)))
 
     return result, perplexity
 

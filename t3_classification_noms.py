@@ -1,21 +1,34 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-import glob
-import os
-import string
-import unicodedata
-import json
 
+import json
+import os
+import unicodedata
+
+import glob
+import string
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.linear_model import LogisticRegression
+
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import train_test_split
+from IPython.display import display
+from sklearn.metrics import precision_score, recall_score, accuracy_score, confusion_matrix
+from sklearn.model_selection import cross_val_score
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import GridSearchCV
 
 datafiles = "./data/names/*.txt"  # les fichiers pour construire vos modèles
 test_filename = './data/test-names-t3.txt'  # le fichier contenant les données de test pour évaluer vos modèles
 
 names_by_origin = {}  # un dictionnaire qui contient une liste de noms pour chaque langue d'origine
-all_origins = []  # la liste des 18 langues d'origines de noms 
+all_origins = []  # la liste des 18 langues d'origines de noms
 
-# Fonctions utilitaires pour lire les données d'entraînement et de test - NE PAS MODIFIER
+classifier = None
+vectorizer = None
+
 
 def load_names():
     """Lecture des noms et langues d'origine d'un fichier. Par la suite,
@@ -25,7 +38,7 @@ def load_names():
         all_origins.append(origin)
         names = read_names(filename)
         names_by_origin[origin] = names
-        
+
 
 def find_files(path):
     """Retourne le nom des fichiers contenus dans un répertoire.
@@ -56,6 +69,7 @@ def unicode_to_ascii(s):
         and c in all_letters
     )
 
+
 def load_test_names(filename):
     """Retourne un dictionnaire contenant les données à utiliser pour évaluer vos modèles.
        Le dictionnaire contient une liste de noms (valeurs) et leur origine (clé)."""
@@ -63,32 +77,61 @@ def load_test_names(filename):
         test_data = json.load(fp)
     return test_data
 
-#---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Fonctions à développer pour ce travail - Ne pas modifier les signatures et les valeurs de retour
 
+"""
+def evaluate_classifiers(filename):
+
+    test_data = load_test_names(filename)
+    # À compléter - Fonction pour l'évaluation des modèles N-grammes.
+    # ...
+    print("\nFonction evaluate_models - À compléter si ça peut vous être utile")
+"""
+
+
 def train_classifiers():
-	load_names()
-    # Vous ajoutez à partir d'ici tout le code dont vous avez besoin
-    # pour construire les différentes versions de classificateurs de langues d'origines.
-    # Voir les consignes de l'énoncé du travail pratique pour déterminer les différents modèles à entraîner.
-    #
-    # On suppose que les données d'entraînement ont été lues (load_names) et sont disponibles (names_by_origin).
-    #
-    # Vous pouvez ajouter au fichier toutes les fonctions que vous jugerez nécessaire.
-    # Merci de ne pas modifier les signatures (noms de fonctions et arguments) déjà présentes dans le fichier.
-    #
-    # Votre code à partir d'ici...
-    #
-    
-    
+    global classifier, vectorizer
+
+    load_names()
+
+    labels = []
+    data = []
+    for key in names_by_origin:
+        for value in names_by_origin[key]:
+            labels.append(key)
+            data.append(value)
+
+    # print(len(labels), labels)
+    # print(len(data), data)
+
+    # TODO: Find a way to do not split the data set
+    X_train, X_test, y_train, y_test = train_test_split(data, labels, train_size=0.99, shuffle=True)
+
+    vectorizer = CountVectorizer(lowercase=True)
+    vectorizer.fit(X_train)
+
+    X_train_vectorized = vectorizer.transform(X_train)
+
+    classifier = MultinomialNB()
+    classifier.fit(X_train_vectorized, y_train)
+
+    # ___ Print data ___
+    """
+    class_probs = list(zip(classifier.classes_, classifier.class_log_prior_))
+    for x, prob in class_probs:
+        print("logprob({}) = {}".format(x, round(prob, 2)))
+    """
+
+
 def get_classifier(type, n=3, weight='tf'):
-    # Retourne le classificateur correspondant. On peut appeler cette fonction
-    # après que les modèles aient été entraînés avec la fonction train_classifiers
-    #
-    classifier = MultinomialNB() # À modifier
-    return classifier  
-    
-    
+    global classifier
+
+    # Add condition
+    return classifier
+
+
 def origin(name, type, n=3, weight='tf'):
     # Retourne la langue d'origine prédite pour le nom.
     #   - name = le nom qu'on veut classifier
@@ -99,13 +142,32 @@ def origin(name, type, n=3, weight='tf'):
     # Votre code à partir d'ici...
     # À compléter...
     #
-    name_origin = "French"  # À modifier
-    return name_origin 
-    
-    
+    global classifier, vectorizer
+    name_origin = "TODO"
+
+    df = pd.DataFrame(vectorizer.get_feature_names(), columns=['Mots'])
+    for i in range(len(classifier.classes_)):
+        df[classifier.classes_[i]] = list(classifier.feature_log_prob_[i])
+
+    score = None
+    result = None
+
+    question_words = [name.lower()]
+    qw_probs = df[df['Mots'].isin(question_words)]
+    for key in qw_probs:
+        if key != 'Mots':
+            newScore = qw_probs[key].values[0]
+            if score is None or newScore > score:
+                score = newScore
+                result = key
+
+    return result
+
+
 def test_classifier(test_fn, type, n=3, weight='tf'):
     test_data = load_test_names(test_fn)
-    print("Nb de noms de test:", len(test_data))
+    for org, name_list in test_data.items():
+        print("\t{} : {}".format(org, name_list))
 
     # Insérer ici votre code pour la classification des questions.
     # Votre code...
@@ -114,17 +176,32 @@ def test_classifier(test_fn, type, n=3, weight='tf'):
     return test_accuracy
 
 
-def evaluate_classifiers(filename):
-    """Fonction utilitaire pour évaluer vos modèles. Aucune contrainte particulière.
-       Nous n'utiliserons pas cette fonction pour l'évaluation de votre travail.
-       Vous pouvez modifier le nom ou les arguments.
-       """
-    test_data = load_test_names(filename)
-    # À compléter - Fonction pour l'évaluation des modèles N-grammes.
-    # ...
-    print("\nFonction evaluate_models - À compléter si ça peut vous être utile")
+if __name__ == '__main__':
+    load_names()
+    print("Les {} langues d'origine sont: \n{}".format(len(all_origins), all_origins))
+    chinese_names = names_by_origin["Chinese"]
+    print("\nQuelques noms chinois : \n", chinese_names[:20])
 
+    train_classifiers()
 
+    some_name = "Chen"
+
+    classifier = get_classifier('logistic_regresion', n=3, weight='tf')
+    print("\nType de classificateur: ", classifier)
+
+    some_origin = origin(some_name, 'naive_bayes', n='multi', weight='tfidf')
+    print("\nLangue d'origine de {}: {}".format(some_name, some_origin))
+
+    test_classifier(test_filename, 1, n=3, weight='tf')
+    """
+    test_names = load_test_names(test_filename)
+    print("\nLes données pour tester vos modèles sont:")
+    for org, name_list in test_names.items():
+        print("\t{} : {}".format(org, name_list))
+    """
+    # evaluate_classifiers(test_filename)
+
+"""
 if __name__ == '__main__':
     # Vous pouvez modifier cette section comme bon vous semble
     load_names()
@@ -146,3 +223,4 @@ if __name__ == '__main__':
     for org, name_list in test_names.items():
         print("\t{} : {}".format(org, name_list))
     evaluate_classifiers(test_filename)
+    """
