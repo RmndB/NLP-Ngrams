@@ -111,15 +111,12 @@ def find_with_score(choices, previous_words, n):
             if newScore is not None:
                 newScore = math.log(dict(model[previous_words[0]]).get(choice))
             else:
-                # TODO: Better way to handle unseen values
+                # TODO: There must be a better way to handle unseen values
                 newScore = -99999999
 
         if result is None or newScore > score:
             result = choice
             score = newScore
-
-    # TODO: Remove this line once post-debugging
-    print(score)
 
     return result, score
 
@@ -192,7 +189,6 @@ def cloze_test(incomplete_proverb, choices, n=3):
         test_sequence = [(previous_words[0], previous_words[1], result), (result, words_after[0], words_after[1],)]
         perplexity = model.perplexity(test_sequence)
     elif n == 20:
-        # print(total, previous_words[0], counter[tuple(previous_words[0])], result, counter[result], words_after[0], counter[words_after[0]])
         perplexity = 2**(-(1/3)*(math.log2(counter[previous_words[0]]/total)+math.log2(counter[result]/total)+math.log2(counter[words_after[0]]/total)))
 
     return result, perplexity

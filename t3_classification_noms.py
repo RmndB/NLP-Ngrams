@@ -7,20 +7,12 @@ import unicodedata
 
 import glob
 import string
-from sklearn.naive_bayes import MultinomialNB
-
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.model_selection import train_test_split
-from IPython.display import display
-from sklearn.metrics import precision_score, recall_score, accuracy_score, confusion_matrix
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import cross_val_score
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.model_selection import GridSearchCV
 from sklearn.feature_extraction.text import TfidfVectorizer
-
+from sklearn.linear_model import LogisticRegression
 
 datafiles = "./data/names/*.txt"  # les fichiers pour construire vos modèles
 test_filename = './data/test-names-t3.txt'  # le fichier contenant les données de test pour évaluer vos modèles
@@ -28,8 +20,9 @@ test_filename = './data/test-names-t3.txt'  # le fichier contenant les données 
 names_by_origin = {}  # un dictionnaire qui contient une liste de noms pour chaque langue d'origine
 all_origins = []  # la liste des 18 langues d'origines de noms
 
-classifier = None
-vectorizer = None
+classifierBayes = [[None, None, None, None], [None, None, None, None]]
+classifierRegression = [[None, None, None, None], [None, None, None, None]]
+vectorizer = [[None, None, None, None], [None, None, None, None]]
 
 
 def load_names():
@@ -83,28 +76,11 @@ def load_test_names(filename):
 # ---------------------------------------------------------------------------
 # Fonctions à développer pour ce travail - Ne pas modifier les signatures et les valeurs de retour
 
-"""
-def evaluate_classifiers(filename):
-
-    test_data = load_test_names(filename)
-    # À compléter - Fonction pour l'évaluation des modèles N-grammes.
-    # ...
-    print("\nFonction evaluate_models - À compléter si ça peut vous être utile")
-"""
-
-
-def cross_validation(classifierToTest, X, y):
-    scores = cross_val_score(classifierToTest, X, y, cv=5)
-    print("\nÉvaluation par validation croisée (en entraînement) : ")
-    print("   Exactitude (accuracy) sur chaque partition", scores)
-    print("   Exactitude moyenne: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
-
 
 def train_classifiers():
-    global classifier, vectorizer
-
     load_names()
 
+    # Divide training data into X_train and Y_train
     y_train = []
     X_train = []
     for key in names_by_origin:
@@ -112,54 +88,124 @@ def train_classifiers():
             y_train.append(key)
             X_train.append(value)
 
-    # vectorizer = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
-    vectorizer = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
-    vectorizer.fit(X_train)
+    print("___ Model performance testing ___ n=1 unigramn, n=2 bigram, n=3 trigram, n=4 multigram, weight=0 tf, weight=1 tfidf")
 
-    X_train_vectorized = vectorizer.transform(X_train)
+    # Create the 8 vectorizers and the 16 models
+    for i in range(2):
+        for y in range(4):
 
-    classifier = MultinomialNB()
-    classifier.fit(X_train_vectorized, y_train)
+            if i == 0:
+                if y == 0:
+                    vectorizer[i][y] = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 1))
+                elif y == 1:
+                    vectorizer[i][y] = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(2, 2))
+                elif y == 2:
+                    vectorizer[i][y] = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(3, 3))
+                elif y == 3:
+                    vectorizer[i][y] = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
+            elif i == 1:
+                if y == 0:
+                    vectorizer[i][y] = TfidfVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 1))
+                elif y == 1:
+                    vectorizer[i][y] = TfidfVectorizer(lowercase=True, analyzer='char', ngram_range=(2, 2))
+                elif y == 2:
+                    vectorizer[i][y] = TfidfVectorizer(lowercase=True, analyzer='char', ngram_range=(3, 3))
+                elif y == 3:
+                    vectorizer[i][y] = TfidfVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
 
-    # ___ Print data ___
-    cross_validation(classifier, X_train_vectorized, y_train)
+            vectorizer[i][y].fit(X_train)
+            X_train_vectorized = vectorizer[i][y].transform(X_train)
+
+            for classifier_type in range(2):
+                if classifier_type == 0:
+                    classifierBayes[i][y] = MultinomialNB()
+                    classifierBayes[i][y].fit(X_train_vectorized, y_train)
+                    # ___ Print cross evaluation score ___
+                    scores = cross_val_score(classifierBayes[i][y], X_train_vectorized, y_train, cv=5)
+                    print("Cross Evaluation (model - Bayes, n={}, weight={}): Exactitude moyenne: {:0.2f} {:0.2f}".format(y+1, i, scores.mean(), scores.std() * 2))
+                if classifier_type == 1:
+                    classifierRegression[i][y] = LogisticRegression(max_iter=5000)
+                    classifierRegression[i][y].fit(X_train_vectorized, y_train)
+                    # ___ Print cross evaluation score ___
+                    scores = cross_val_score(classifierRegression[i][y], X_train_vectorized, y_train, cv=5)
+                    print("Cross Evaluation (model - Regression, n={}, weight={}): Exactitude moyenne: {:0.2f} +-{:0.2f}".format(y+1, i, scores.mean(), scores.std() * 2))
 
 
 def get_classifier(type, n=3, weight='tf'):
-    global classifier
+    if type == 'naive_bayes':
+        if n == 1:
+            if weight == 'tf':
+                return classifierBayes[0][0]
+            elif weight == 'tfidf':
+                return classifierBayes[1][0]
+        elif n == 2:
+            if weight == 'tf':
+                return classifierBayes[0][1]
+            elif weight == 'tfidf':
+                return classifierBayes[1][1]
+        elif n == 3:
+            if weight == 'tf':
+                return classifierBayes[0][2]
+            elif weight == 'tfidf':
+                return classifierBayes[1][2]
+        elif n == "multi":
+            if weight == 'tf':
+                return classifierBayes[0][3]
+            elif weight == 'tfidf':
+                return classifierBayes[1][3]
+    elif type == 'logistic_regresion':
+        if n == 1:
+            if weight == 'tf':
+                return classifierRegression[0][0]
+            elif weight == 'tfidf':
+                return classifierRegression[1][0]
+        elif n == 2:
+            if weight == 'tf':
+                return classifierRegression[0][1]
+            elif weight == 'tfidf':
+                return classifierRegression[1][1]
+        elif n == 3:
+            if weight == 'tf':
+                return classifierRegression[0][2]
+            elif weight == 'tfidf':
+                return classifierRegression[1][2]
+        elif n == "multi":
+            if weight == 'tf':
+                return classifierRegression[0][3]
+            elif weight == 'tfidf':
+                return classifierRegression[1][3]
 
-    # Add condition
-    return classifier
+    raise Exception("Not found")
 
 
-def predict(classifier, vectorizer, name):
-    score = None
-    result = ''
-    df = pd.DataFrame(vectorizer.get_feature_names(), columns=['Mots'])
-    for i in range(len(classifier.classes_)):
-        df[classifier.classes_[i]] = list(classifier.feature_log_prob_[i])
+def get_vectorizer(type, n=3, weight='tf'):
+    if n == 1:
+        if weight == 'tf':
+            return vectorizer[0][0]
+        elif weight == 'tfidf':
+            return vectorizer[1][0]
+    elif n == 2:
+        if weight == 'tf':
+            return vectorizer[0][1]
+        elif weight == 'tfidf':
+            return vectorizer[1][1]
+    elif n == 3:
+        if weight == 'tf':
+            return vectorizer[0][2]
+        elif weight == 'tfidf':
+            return vectorizer[1][2]
+    elif n == "multi":
+        if weight == 'tf':
+            return vectorizer[0][3]
+        elif weight == 'tfidf':
+            return vectorizer[1][3]
 
-    question_words = [name.lower()]
-    qw_probs = df[df['Mots'].isin(question_words)]
-    for key in qw_probs:
-        if key != 'Mots':
-            if len(qw_probs[key]) > 0:
-                newScore = qw_probs[key].values[0]
-                if score is None or newScore > score:
-                    score = newScore
-                    result = key
-    return result
+    raise Exception("Not found")
 
 
 def origin(name, type, n=3, weight='tf'):
-    #   - name = le nom qu'on veut classifier
-    #   - type = 'naive_bayes' ou 'logistic_regresion'
-    #   - n désigne la longueur des N-grammes. Choix possible = 1, 2, 3, 'multi'
-    #   - weight désigne le poids des attributs. Soit tf (comptes) ou tfidf.
-
-    global classifier, vectorizer
-
-    # result = predict(classifier, vectorizer, name)
+    classifier = get_classifier(type, n, weight)
+    vectorizer = get_vectorizer(type, n, weight)
 
     result = classifier.predict(vectorizer.transform([name]))
 
@@ -167,44 +213,31 @@ def origin(name, type, n=3, weight='tf'):
 
 
 def test_classifier(test_fn, type, n=3, weight='tf'):
+    classifier = get_classifier(type, n, weight)
+    vectorizer = get_vectorizer(type, n, weight)
+
     test_data = load_test_names(test_fn)
+
+    # Divide testing data into X_test and Y_test
     Y_test = []
     X_test = []
-
     for org, name_list in test_data.items():
         for value in name_list:
             Y_test.append(org)
             X_test.append(value)
 
     y_pred = classifier.predict(vectorizer.transform(X_test))
-    print(y_pred)
-
-    test_accuracy = accuracy_score(Y_test, y_pred)
-    return test_accuracy
+    score = accuracy_score(Y_test, y_pred)
+    return score
 
 
 if __name__ == '__main__':
-    load_names()
-    print("Les {} langues d'origine sont: \n{}".format(len(all_origins), all_origins))
-    chinese_names = names_by_origin["Chinese"]
-    print("\nQuelques noms chinois : \n", chinese_names[:20])
-
     train_classifiers()
 
-    some_name = "Lamontagne"
-
-    classifier = get_classifier('logistic_regresion', n=3, weight='tf')
-    print("\nType de classificateur: ", classifier)
+    some_name = "Mickey"
 
     some_origin = origin(some_name, 'naive_bayes', n='multi', weight='tfidf')
     print("\nLangue d'origine de {}: {}".format(some_name, some_origin))
 
-    """
-    test_names = load_test_names(test_filename)
-    print("\nLes données pour tester vos modèles sont:")
-    for org, name_list in test_names.items():
-        print("\t{} : {}".format(org, name_list))
-    """
-
-    accuracy_score = test_classifier(test_filename, 1, n=3, weight='tf')
-    print("\tAccuracy: {}".format(accuracy_score))
+    accuracy_score = test_classifier(test_filename, 'logistic_regresion', n='multi', weight='tfidf')
+    print("\nAccuracy: {}".format(accuracy_score))

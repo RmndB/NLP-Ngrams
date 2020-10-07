@@ -13,16 +13,12 @@ def load_ingredients(filename):
     ingredients = [x.strip() for x in raw_items]
     return ingredients
 
-def get_ingredients(text):
-    # Insérez ici votre code pour l'extaction d'ingrédients.
-    # En entrée, on devrait recevoir une ligne de texte qui correspond à un ingrédient.
-    # Par ex. 2 cuillères à café de poudre à pâte
-    # Vous pouvez ajouter autant de fonctions que vous le souhaitez.
 
+def get_ingredients(text):
     return regex_quantity.match(text).group(1).strip(), regex_quantity.match(text).group(32).strip()
 
+
 if __name__ == '__main__':
-    # Vous pouvez modifier cette section
     print("Lecture des ingrédients du fichier {}.".format(ingredients_fn))
     all_items = load_ingredients(ingredients_fn)
 
