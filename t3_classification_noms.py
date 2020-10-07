@@ -234,10 +234,18 @@ def test_classifier(test_fn, type, n=3, weight='tf'):
 if __name__ == '__main__':
     train_classifiers()
 
-    some_name = "Mickey"
-
-    some_origin = origin(some_name, 'naive_bayes', n='multi', weight='tfidf')
+    some_name = "Lamontagne"
+    some_origin = origin(some_name, 'logistic_regresion', n='multi', weight='tfidf')
     print("\nLangue d'origine de {}: {}".format(some_name, some_origin))
+
+    some_name = "Nguyen"
+    some_origin = origin(some_name, 'logistic_regresion', n='multi', weight='tfidf')
+    print("\nLangue d'origine de {}: {}".format(some_name, some_origin))
+
+    some_name = "Yassine"
+    some_origin = origin(some_name, 'logistic_regresion', n='multi', weight='tfidf')
+    print("\nLangue d'origine de {}: {}".format(some_name, some_origin))
+
 
     accuracy_score = test_classifier(test_filename, 'logistic_regresion', n='multi', weight='tfidf')
     print("\nAccuracy: {}".format(accuracy_score))

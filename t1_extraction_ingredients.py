@@ -24,5 +24,5 @@ if __name__ == '__main__':
 
     for item in all_items:
         quantity, ingredient = get_ingredients(item)
-        if quantity != "" and ingredient != "":
-            print("\t{}\t QUANTITE: {}\t INGREDIENT: {}".format(item, quantity, ingredient))
+        if item != "":
+            print("{}   QUANTITE:{}   INGREDIENT:{}".format(item, quantity, ingredient))
