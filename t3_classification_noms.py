@@ -112,7 +112,8 @@ def train_classifiers():
             y_train.append(key)
             X_train.append(value)
 
-    vectorizer = CountVectorizer(lowercase=True, ngram_range=(1, 3))
+    # vectorizer = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
+    vectorizer = CountVectorizer(lowercase=True, analyzer='char', ngram_range=(1, 3))
     vectorizer.fit(X_train)
 
     X_train_vectorized = vectorizer.transform(X_train)
@@ -123,18 +124,31 @@ def train_classifiers():
     # ___ Print data ___
     cross_validation(classifier, X_train_vectorized, y_train)
 
-    """
-    class_probs = list(zip(classifier.classes_, classifier.class_log_prior_))
-    for x, prob in class_probs:
-        print("logprob({}) = {}".format(x, round(prob, 2)))
-    """
-
 
 def get_classifier(type, n=3, weight='tf'):
     global classifier
 
     # Add condition
     return classifier
+
+
+def predict(classifier, vectorizer, name):
+    score = None
+    result = ''
+    df = pd.DataFrame(vectorizer.get_feature_names(), columns=['Mots'])
+    for i in range(len(classifier.classes_)):
+        df[classifier.classes_[i]] = list(classifier.feature_log_prob_[i])
+
+    question_words = [name.lower()]
+    qw_probs = df[df['Mots'].isin(question_words)]
+    for key in qw_probs:
+        if key != 'Mots':
+            if len(qw_probs[key]) > 0:
+                newScore = qw_probs[key].values[0]
+                if score is None or newScore > score:
+                    score = newScore
+                    result = key
+    return result
 
 
 def origin(name, type, n=3, weight='tf'):
@@ -145,21 +159,9 @@ def origin(name, type, n=3, weight='tf'):
 
     global classifier, vectorizer
 
-    score = None
-    df = pd.DataFrame(vectorizer.get_feature_names(), columns=['Mots'])
-    for i in range(len(classifier.classes_)):
-        df[classifier.classes_[i]] = list(classifier.feature_log_prob_[i])
+    # result = predict(classifier, vectorizer, name)
 
-    question_words = [name.lower()]
-    qw_probs = df[df['Mots'].isin(question_words)]
-    for key in qw_probs:
-        if key != 'Mots':
-            newScore = qw_probs[key].values[0]
-            if score is None or newScore > score:
-                score = newScore
-                result = key
-
-    # result = classifier.predict(vectorizer.transform([name]))
+    result = classifier.predict(vectorizer.transform([name]))
 
     return result
 
@@ -174,9 +176,7 @@ def test_classifier(test_fn, type, n=3, weight='tf'):
             Y_test.append(org)
             X_test.append(value)
 
-    X_test_vectorized = vectorizer.transform(X_test)
-    y_pred = classifier.predict(X_test_vectorized)
-
+    y_pred = classifier.predict(vectorizer.transform(X_test))
     print(y_pred)
 
     test_accuracy = accuracy_score(Y_test, y_pred)
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 
     train_classifiers()
 
-    some_name = "Travert"
+    some_name = "Lamontagne"
 
     classifier = get_classifier('logistic_regresion', n=3, weight='tf')
     print("\nType de classificateur: ", classifier)
